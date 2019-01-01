@@ -15,6 +15,10 @@ upload_destination = ""
 port = 0
 commandList = ["help", "listen", "execute", "target", "port", "command", "upload"]
 
+MSG_SUCCESS = "Successfully saved file to %s\r\n" % upload_destination
+MSG_FAIL = "Successfully saved file to %s\r\n" % upload_destination
+PROMPT = "ND>"
+
 
 def usage():
     print("MiniNetCat")
@@ -55,9 +59,90 @@ def client_sender(buffer):
         client.close();
 
 
+def client_handler(client_socket):
+    global upload
+    global execute
+    global command
+
+    if len(upload_destination):
+
+        # read in bytes and write to destination
+        file_buffer = ""
+
+        while True:
+            data = client_socket.recv(1024).decode()
+
+            if not data:
+                break
+            else:
+                file_buffer += data
+
+        # try to write bytes out
+
+        try:
+            file_descriptor = open(upload_destination, "wb")
+            file_descriptor.write(file_buffer)
+            file_descriptor.close()
+
+            client_socket.send(MSG_SUCCESS.encode())
+        except socket.error as err:
+            print(err)
+        except Exception:
+            client_socket.send(MSG_FAIL.encode())
+
+    # check for command execution
+    if len(execute):
+
+        output = run_command(execute)
+
+        client_socket.send(output.encode())
+
+        if command:
+
+            while True:
+                client_socket.send(PROMPT.encode())
+
+                cmd_buffer = ""
+                while"\n" not in cmd_buffer:
+                    cmd_buffer += client_socket.recv(1024).decode()
+
+                # send back command output
+
+                response = run_command(cmd_buffer)
+
+                client_socket.send(response.encode())
+
 
 def server_loop():
-    pass
+    global target
+
+    if not len(target):
+        target = "0.0.0.0"
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((target, port))
+    server.listen(5)
+
+    while True:
+        client_socket, addr = server.accept()
+
+        # thread to handle new client
+        client_thread = threading.Thread(client_handler(client_socket))
+        client_thread.start()
+
+
+def run_command(curr_command):
+
+    # trim newline
+    curr_command = curr_command.rstrip()
+
+    # run command and get output back
+    try:
+        output = subprocess.check_output(curr_command, stderr=subprocess.STDOUT, shell=True)
+    except Exception:
+        output = "Failed to execute the command.\r\n"
+
+    return output
 
 
 def main():
