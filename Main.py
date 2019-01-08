@@ -97,20 +97,18 @@ def client_handler(client_socket):
 
         client_socket.send(output.encode())
 
-        if command:
+    if command:
+        while True:
+            client_socket.send(PROMPT.encode())
 
-            while True:
-                client_socket.send(PROMPT.encode())
-
-                cmd_buffer = ""
-                while"\n" not in cmd_buffer:
-                    cmd_buffer += client_socket.recv(1024).decode()
-
+            cmd_buffer = ""
+            while"\n" not in cmd_buffer:
+                received = client_socket.recv(1024)
+                cmd_buffer += received.decode()
                 # send back command output
 
-                response = run_command(cmd_buffer)
-
-                client_socket.send(response.encode())
+            response = run_command(cmd_buffer)
+            client_socket.send(response.encode())
 
 
 def server_loop():
