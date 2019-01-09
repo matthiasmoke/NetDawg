@@ -4,8 +4,6 @@ import socket
 import getopt
 import threading
 
-from Tools.Scripts.treesync import raw_input
-
 listen = False
 command = False
 upload = False
@@ -20,19 +18,24 @@ MSG_FAIL = "Successfully saved file to %s\r\n" % upload_destination
 PROMPT = "ND>"
 
 
+def print_banner():
+    print("/================== NetDAWG ==================\\")
+
+
 def usage():
-    print("MiniNetCat")
+    print("Usage: netdawg.py -t target_host -p port\n")
+    print("-l / listen :           listen on host:port for incoming connections")
+    print("-e=file_to_run :        execute the file upon receiving connection")
+    print("-c :                    initialize a command shell")
+    print("-u=upload_destination : upload file on receiving connection")
 
 
-def client_sender(buffer):
+def client_sender():
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
         # connect to target host
         client.connect((target, port))
-
-        if len(buffer):
-            client.send(buffer.encode())
 
         while True:
             recv_len = 1
@@ -47,70 +50,84 @@ def client_sender(buffer):
                 if recv_len < 4096:
                     break
 
-            print(response)
+            if PROMPT in response:
+                print(response, end='')
+            else:
+                print(response)
 
             # wait for more input
-            buffer = raw_input("")
-            buffer += "\n"
+            user_input = input()
+            user_input += "\n"
 
-            client.send(buffer.encode())
+            client.send(user_input.encode())
+
     except Exception as err:
         print("Error! Exiting\n %s" % str(err))
-        client.close();
+        client.close()
 
 
-def client_handler(client_socket):
-    global upload
-    global execute
-    global command
+def upload_to_dest(client_socket):
 
-    if len(upload_destination):
+    # read in bytes and write to destination
+    file_buffer = ""
 
-        # read in bytes and write to destination
-        file_buffer = ""
+    while True:
+        data = client_socket.recv(1024).decode()
 
-        while True:
-            data = client_socket.recv(1024).decode()
+        if not data:
+            break
+        else:
+            file_buffer += data
 
-            if not data:
-                break
-            else:
-                file_buffer += data
+    # try to write bytes out
 
-        # try to write bytes out
+    try:
+        file_descriptor = open(upload_destination, "wb")
+        file_descriptor.write(file_buffer)
+        file_descriptor.close()
 
-        try:
-            file_descriptor = open(upload_destination, "wb")
-            file_descriptor.write(file_buffer)
-            file_descriptor.close()
+        client_socket.send(MSG_SUCCESS.encode())
+    except socket.error as err:
+        print(err)
+    except Exception:
+        client_socket.send(MSG_FAIL.encode())
 
-            client_socket.send(MSG_SUCCESS.encode())
-        except socket.error as err:
-            print(err)
-        except Exception:
-            client_socket.send(MSG_FAIL.encode())
 
-    # check for command execution
-    if len(execute):
-
-        output = run_command(execute)
-
-        client_socket.send(output.encode())
-
-    if command:
+def command_shell(client_socket):
+    try:
         while True:
             client_socket.send(PROMPT.encode())
 
             cmd_buffer = ""
-            while"\n" not in cmd_buffer:
+            while "\n" not in cmd_buffer:
                 received = client_socket.recv(1024)
                 cmd_buffer += received.decode()
-                # send back command output
 
+            # send back command output if possible
             response = run_command(cmd_buffer)
 
             if len(response):
                 client_socket.send(str(response).encode())
+
+    except socket.error:
+        client_socket.close()
+        print("Client disconnected")
+
+
+def client_handler(client_socket):
+    global execute
+    global command
+
+    if len(upload_destination):
+        upload_to_dest(client_socket)
+
+    # check for command execution
+    if len(execute):
+        output = run_command(execute)
+        client_socket.send(str(output).encode())
+
+    elif command:
+        command_shell(client_socket)
 
 
 def server_loop():
@@ -125,6 +142,7 @@ def server_loop():
 
     while True:
         client_socket, addr = server.accept()
+        print("Connection received!")
 
         # thread to handle new client
         client_thread = threading.Thread(client_handler(client_socket))
@@ -186,12 +204,12 @@ def main():
     if not listen and len(target) and port > 0:
 
         # read in buffer from the commandline
-        buffer = sys.stdin.read()
-        client_sender(buffer)
+        client_sender()
 
     if listen:
         server_loop()
 
 
+print_banner()
 main()
 
