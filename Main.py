@@ -108,7 +108,9 @@ def client_handler(client_socket):
                 # send back command output
 
             response = run_command(cmd_buffer)
-            client_socket.send(response.encode())
+
+            if len(response):
+                client_socket.send(str(response).encode())
 
 
 def server_loop():
