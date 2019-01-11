@@ -50,10 +50,7 @@ def client_sender():
                 if recv_len < 4096:
                     break
 
-            if PROMPT in response:
-                print(response, end='')
-            else:
-                print(response)
+            print_response_string(response)
 
             # wait for more input
             user_input = input()
@@ -72,10 +69,11 @@ def print_response_string(response):
     if PROMPT in resp_string:
         print(response, end='')
     else:
-        if "\n" in response:
-            resp_string.replace("\n", "\n")
-        elif "\r" in response:
-            resp_string.replace("\r", "\r")
+        resp_string = resp_string[2:]
+        if "\\n" in response:
+            resp_string.replace("\\n", "\n")
+        elif "\\r" in response:
+            resp_string.replace("\\r", "\r")
 
         print(resp_string)
 
